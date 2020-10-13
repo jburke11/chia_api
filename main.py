@@ -2,7 +2,7 @@ from fastapi import FastAPI , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pymongo , re , datetime, gridfs
 from utility import get_ssr
-
+from typing import Optional
 # get the client
 client = pymongo.MongoClient ( )
 # connect to the genes collection in the chia database
@@ -61,7 +61,7 @@ def get_id(transcript_id: str) :
         get_ssr(db, model)
         return model
 
-@app.get("/interpro/{keyword}-{type}")
+@app.get("/interpro/{type}/{keyword}")
 def get_interpro(keyword: str, type: str):
     keyword = keyword.rstrip()
     try:
@@ -89,7 +89,7 @@ def get_interpro(keyword: str, type: str):
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
 
-@app.get("/go/{keyword}-{type}")
+@app.get("/go/{type}/{keyword}")
 def get_go(keyword: str, type: str):
     keyword = keyword.rstrip()
     try:
@@ -122,7 +122,7 @@ def get_func_anno(keyword: str):
     models = db.genes.find({"func_anno": {"$regex": keyword}}, {"_id": 0, "transcript_id": 1, "func_anno": 1})
     return list(models)
 
-@app.get("/seq/{transcript_id}-{type}")
+@app.get("/seq/{type}/{transcript_id}")
 def get_seq(transcript_id: str, type: str):
     try:
         if type == "cds" or type == "cdna" or type == "protein":
@@ -141,24 +141,33 @@ def get_seq(transcript_id: str, type: str):
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
 
-@app.get("/seq_chr/{chr}-{start}-{stop}")
-def get_seq_chr(chr: str, start: int, stop: int):
+@app.get("/seq_chr/{chr}/")
+def get_seq_chr(chr: str, start: Optional[int] = None, stop: Optional[int] = None):
     try:
         fs = gridfs.GridFS(db)
-        header = ">" + chr + " " + str(start) + "-" + str(stop)
         file = db.fs.files.find_one({"filename": chr})
         with fs.get(file["_id"]) as fp_read:
             result = fp_read.read()
             result = result.decode()
-            if stop > (len(result)) or start > stop:
+            if not start and not stop:
+                header = ">" + chr + " " + "1" + "-" + str(len(result))
+                return { "header" : header , "sequence" : result }
+            elif start and not stop:
+                header = ">" + chr + " " + str ( start ) + "-" + str(len(result))
+                return { "header" : header , "sequence" : result[start - 1:] }
+            elif stop and not start:
+                header = ">" + chr + " " + "1" + "-" + str ( stop )
+                return { "header" : header , "sequence" : result[:stop] }
+            elif stop > (len(result)) or start > stop:
                 raise TypeError
             else:
-                return {"header":header, "sequence": result[start - 1: stop-1]}
+                header = ">" + chr + " " + str ( start ) + "-" + str ( stop )
+                return {"header":header, "sequence": result[start - 1: stop]}
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
 
-@app.get("/seq_stream/{bp}-{type}-{transcript_id}")
-def seq_stream(bp: int, type: str, transcript_id: str):
+@app.get("/flanking_seq/{type}/{transcript_id}/{bp}")
+def flanking_seq(bp: int, type: str, transcript_id: str):
     try:
         if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , transcript_id ) :
             model = db.genes.find_one ( { "transcript_id" : transcript_id } ,
@@ -169,7 +178,7 @@ def seq_stream(bp: int, type: str, transcript_id: str):
             if not model :
                 model = db.genes.find_one ( { "gene_id" : transcript_id } ,
                                                 { "_id" : 0 , "transcript_id" : 1, "start":1, "stop":2, "scaffold": 1} )
-        if type == "up":
+        if type == "upstream":
             fs = gridfs.GridFS(db)
             file = db.fs.files.find_one({"filename": model["scaffold"]})
             with fs.get(file["_id"]) as fp_read:
@@ -178,7 +187,7 @@ def seq_stream(bp: int, type: str, transcript_id: str):
                 header = ">" + model["scaffold"] + " " + str(bp) + " upstream of " + model["transcript_id"]
                 result = result[(model["stop"] - 1): (model["stop"] -1 + bp)]
                 return {"header": header, "sequence": result}
-        elif type == "down":
+        elif type == "downstream":
             fs = gridfs.GridFS(db)
             file = db.fs.files.find_one({"filename": model["scaffold"]})
             with fs.get(file["_id"]) as fp_read:
