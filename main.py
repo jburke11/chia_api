@@ -73,9 +73,8 @@ def get_interpro(keyword: str, type: str):
                                   "cond" : { "$regexMatch" : { "input" : "$$ipr.method_description" , "regex" : keyword } } } } } } ,
                 { "$match" : { "model_iprscan" : { "$elemMatch" : { "$exists" : True } } } }
             ] )
-            return { "IPR scan results" : list ( models ) }
+            return { "iprscan_search" : list(models) }
         elif type == "id":
-            print(keyword)
             models = db.genes.aggregate ( [
                 { "$match" : { "$expr" : { "regexMatch" : { "input" : "$model_iprscan.interpro_accession" , "regex" : keyword } } } } ,
                 { "$project" : { "transcript_id" : 1 , "_id" : 0 , "model_iprscan" : {
@@ -83,7 +82,7 @@ def get_interpro(keyword: str, type: str):
                         "$regexMatch" : { "input" : "$$ipr.interpro_accession" , "regex" : keyword } } } } } } ,
                 { "$match" : { "model_iprscan" : { "$elemMatch" : { "$exists" : True } } } }
             ] )
-            return { "IPR scan results" : list(models) }
+            return { "iprscan_search" : list(models) }
         else:
             raise TypeError
     except TypeError:
@@ -119,29 +118,36 @@ def get_go(keyword: str, type: str):
 @app.get("/func_anno/{keyword}")
 def get_func_anno(keyword: str):
     keyword = keyword.rstrip()
-    models = db.genes.find({"func_anno": {"$regex": keyword}}, {"_id": 0, "transcript_id": 1, "func_anno": 1})
-    return list(models)
+    models = list(db.genes.find({"func_anno": {"$regex": keyword}}, {"_id": 0, "transcript_id": 1, "func_anno": 1}))
+    if len(models) == 0:
+        raise HTTPException ( status_code=404 , detail="bad keyword/id" )
+    else:
+        return {"func_anno": models}
 
 @app.get("/seq/{type}/{transcript_id}")
 def get_seq(transcript_id: str, type: str):
     try:
-        if type == "cds" or type == "cdna" or type == "protein":
+        if type == "CDS" or type == "cDNA" or type == "Protein":
+            db_type = type.lower ()
             if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , transcript_id ):
-                model = db.genes.find_one({"transcript_id": transcript_id}, {"_id": 0, "transcript_id": 1, type : 1})
+                model = db.genes.find_one({"transcript_id": transcript_id}, {"_id": 0, "transcript_id": 1, db_type : 1})
+                model = {"transcript_id": model["transcript_id"], "sequence": model[db_type], "type": type}
                 return model
             elif re.match ( r"^Salhi[.]\d{2}G\d{6}$" , transcript_id ):
-                rep_model = db.genes.find_one({"gene_id": transcript_id, "is_repr": 1}, {"_id": 0, "transcript_id": 1, type: 1})
+                rep_model = db.genes.find_one({"gene_id": transcript_id, "is_repr": 1}, {"_id": 0, "transcript_id": 1, db_type: 1})
                 if not rep_model:
-                    rep_model = db.genes.find_one({"gene_id": transcript_id}, {"_id": 0, "transcript_id": 1, type: 1})
+                    rep_model = db.genes.find_one({"gene_id": transcript_id}, {"_id": 0, "transcript_id": 1, db_type: 1})
+                rep_model = { "transcript_id" : rep_model ["transcript_id"] , "sequence" : rep_model [db_type] , "type" : type }
                 return rep_model
             else:
                 raise TypeError
         else:
             raise TypeError
+
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
 
-@app.get("/seq_chr/{chr}/")
+@app.get("/seq_chr/{chr}")
 def get_seq_chr(chr: str, start: Optional[int] = None, stop: Optional[int] = None):
     try:
         fs = gridfs.GridFS(db)
@@ -150,24 +156,24 @@ def get_seq_chr(chr: str, start: Optional[int] = None, stop: Optional[int] = Non
             result = fp_read.read()
             result = result.decode()
             if not start and not stop:
-                header = ">" + chr + " " + "1" + "-" + str(len(result))
+                header = ">" + chr + ":" + "1" + "," + str(len(result))
                 return { "header" : header , "sequence" : result }
             elif start and not stop:
-                header = ">" + chr + " " + str ( start ) + "-" + str(len(result))
+                header = ">" + chr + ":" + str ( start ) + "," + str(len(result))
                 return { "header" : header , "sequence" : result[start - 1:] }
             elif stop and not start:
-                header = ">" + chr + " " + "1" + "-" + str ( stop )
+                header = ">" + chr + ":" + "1" + "," + str ( stop )
                 return { "header" : header , "sequence" : result[:stop] }
             elif stop > (len(result)) or start > stop:
                 raise TypeError
             else:
-                header = ">" + chr + " " + str ( start ) + "-" + str ( stop )
+                header = ">" + chr + ":" + str ( start ) + "," + str ( stop )
                 return {"header":header, "sequence": result[start - 1: stop]}
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
 
-@app.get("/flanking_seq/{type}/{transcript_id}/{bp}")
-def flanking_seq(bp: int, type: str, transcript_id: str):
+@app.get("/flanking_seq/{direction}/{transcript_id}/{bp}")
+def flanking_seq(bp: int, direction: str, transcript_id: str):
     try:
         if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , transcript_id ) :
             model = db.genes.find_one ( { "transcript_id" : transcript_id } ,
@@ -178,22 +184,22 @@ def flanking_seq(bp: int, type: str, transcript_id: str):
             if not model :
                 model = db.genes.find_one ( { "gene_id" : transcript_id } ,
                                                 { "_id" : 0 , "transcript_id" : 1, "start":1, "stop":2, "scaffold": 1} )
-        if type == "upstream":
+        if direction == "upstream":
             fs = gridfs.GridFS(db)
             file = db.fs.files.find_one({"filename": model["scaffold"]})
             with fs.get(file["_id"]) as fp_read:
                 result = fp_read.read()
                 result = result.decode()
-                header = ">" + model["scaffold"] + " " + str(bp) + " upstream of " + model["transcript_id"]
+                header = ">" + model["scaffold"] + ": " + str(bp) + "bp upstream of " + model["transcript_id"]
                 result = result[(model["stop"] - 1): (model["stop"] -1 + bp)]
                 return {"header": header, "sequence": result}
-        elif type == "downstream":
+        elif direction == "downstream":
             fs = gridfs.GridFS(db)
             file = db.fs.files.find_one({"filename": model["scaffold"]})
             with fs.get(file["_id"]) as fp_read:
                 result = fp_read.read()
                 result = result.decode()
-                header = ">" + model["scaffold"] + " " + str(bp) + " downstream of " + model["transcript_id"]
+                header = ">" + model["scaffold"] + ": " + str(bp) + "bp downstream of " + model["transcript_id"]
                 result = result[(model["start"] - 1 - bp): (model["start"] - 1)]
                 return {"header":header, "sequence": result}
         else:
