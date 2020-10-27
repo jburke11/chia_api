@@ -100,7 +100,8 @@ def get_go(keyword: str, type: str):
                                   "cond" : { "$regexMatch" : { "input" : "$$go.go_name" , "regex" : keyword } } } } } } ,
                 { "$match" : { "model_go" : { "$elemMatch" : { "$exists" : True } } } }
             ] )
-            return { "GO_results" : list ( models ) }
+            models = list(models)
+            return { "GO_results" :  models }
         elif type == "id":
             models = db.genes.aggregate ( [
                 { "$match" : { "$expr" : { "regexMatch" : { "input" : "$model_go.go_accession" , "regex" : keyword } } } } ,
@@ -109,7 +110,8 @@ def get_go(keyword: str, type: str):
                         "$regexMatch" : { "input" : "$$go.go_accession" , "regex" : keyword } } } } } } ,
                 { "$match" : { "model_go" : { "$elemMatch" : { "$exists" : True } } } }
             ] )
-            return { "GO_results" : list(models) }
+            models = list(models)
+            return { "GO_results" : models }
         else:
             raise TypeError
     except TypeError:
