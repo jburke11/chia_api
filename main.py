@@ -62,7 +62,7 @@ def get_id(transcript_id: str) :
         return model
 
 @app.get("/interpro/{type}/{keyword}")
-def get_interpro(keyword: str, type: str):
+def get_interpro(keyword: str, type: str, limit: Optional[int] = 60000 ):
     keyword = keyword.rstrip()
     try:
         if type == "keyword":
@@ -71,7 +71,8 @@ def get_interpro(keyword: str, type: str):
                 { "$project" : { "transcript_id" : 1 , "_id" : 0 , "model_iprscan" : {
                     "$filter" : { "input" : "$model_iprscan" , "as" : "ipr" ,
                                   "cond" : { "$regexMatch" : { "input" : "$$ipr.method_description" , "regex" : keyword } } } } } } ,
-                { "$match" : { "model_iprscan" : { "$elemMatch" : { "$exists" : True } } } }
+                { "$match" : { "model_iprscan" : { "$elemMatch" : { "$exists" : True } } } },
+                {"$limit": limit}
             ] )
             return { "iprscan_search" : list(models) }
         elif type == "id":
@@ -80,7 +81,8 @@ def get_interpro(keyword: str, type: str):
                 { "$project" : { "transcript_id" : 1 , "_id" : 0 , "model_iprscan" : {
                     "$filter" : { "input" : "$model_iprscan" , "as" : "ipr" , "cond" : {
                         "$regexMatch" : { "input" : "$$ipr.interpro_accession" , "regex" : keyword } } } } } } ,
-                { "$match" : { "model_iprscan" : { "$elemMatch" : { "$exists" : True } } } }
+                { "$match" : { "model_iprscan" : { "$elemMatch" : { "$exists" : True } } } },
+                {"$limit": limit}
             ] )
             return { "iprscan_search" : list(models) }
         else:
@@ -89,7 +91,7 @@ def get_interpro(keyword: str, type: str):
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
 
 @app.get("/go/{type}/{keyword}")
-def get_go(keyword: str, type: str):
+def get_go(keyword: str, type: str, limit: Optional[int] = 60000):
     keyword = keyword.rstrip()
     try:
         if type == "keyword":
@@ -98,7 +100,8 @@ def get_go(keyword: str, type: str):
                 { "$project" : { "transcript_id" : 1 , "_id" : 0 , "model_go" : {
                     "$filter" : { "input" : "$model_go" , "as" : "go" ,
                                   "cond" : { "$regexMatch" : { "input" : "$$go.go_name" , "regex" : keyword } } } } } } ,
-                { "$match" : { "model_go" : { "$elemMatch" : { "$exists" : True } } } }
+                { "$match" : { "model_go" : { "$elemMatch" : { "$exists" : True } } } },
+                {"$limit": limit}
             ] )
             models = list(models)
             return { "GO_results" :  models }
@@ -108,7 +111,8 @@ def get_go(keyword: str, type: str):
                 { "$project" : { "transcript_id" : 1 , "_id" : 0 , "model_go" : {
                     "$filter" : { "input" : "$model_go" , "as" : "go" , "cond" : {
                         "$regexMatch" : { "input" : "$$go.go_accession" , "regex" : keyword } } } } } } ,
-                { "$match" : { "model_go" : { "$elemMatch" : { "$exists" : True } } } }
+                { "$match" : { "model_go" : { "$elemMatch" : { "$exists" : True } } } },
+                {"$limit": limit}
             ] )
             models = list(models)
             return { "GO_results" : models }
