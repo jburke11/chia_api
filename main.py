@@ -58,8 +58,6 @@ def get_id(species: str, transcript_id: str) :
         [model ["alt_splices"].append ( splice ["transcript_id"] ) for splice in alt_splices]
         get_ssr(db, model)
         return model
-    finally:
-        db.close()
 
 @app.get("/interpro/{species}/{type}/{keyword}")
 def get_interpro(species: str, keyword: str, type: str, limit: Optional[int] = 60000 ):
@@ -90,8 +88,6 @@ def get_interpro(species: str, keyword: str, type: str, limit: Optional[int] = 6
             raise TypeError
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
-    finally:
-        db.close()
 
 @app.get("/go/{species}/{type}/{keyword}")
 def get_go(species: str, keyword: str, type: str, limit: Optional[int] = 60000):
@@ -124,8 +120,6 @@ def get_go(species: str, keyword: str, type: str, limit: Optional[int] = 60000):
             raise TypeError
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
-    finally:
-        db.close()
 
 @app.get("/func_anno/{species}/{keyword}")
 def get_func_anno(species: str,keyword: str):
@@ -136,7 +130,6 @@ def get_func_anno(species: str,keyword: str):
         db.close ( )
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
     else:
-        db.close ( )
         return {"func_anno": models}
 
 @app.get("/seq/{species}/{type}/{transcript_id}")
@@ -163,8 +156,6 @@ def get_seq(species: str, transcript_id: str, type: str):
 
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
-    finally:
-        db.close()
 
 @app.get("/seq_chr/{species}/{chr}")
 def get_seq_chr(species: str, chr: str, start: Optional[int] = None, stop: Optional[int] = None):
@@ -191,8 +182,6 @@ def get_seq_chr(species: str, chr: str, start: Optional[int] = None, stop: Optio
                 return {"header":header, "sequence": result[start - 1: stop]}
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
-    finally:
-        db.close()
 
 @app.get("/flanking_seq/{species}/{direction}/{transcript_id}/{bp}")
 def flanking_seq(species: str, bp: int, direction: str, transcript_id: str):
@@ -233,5 +222,3 @@ def flanking_seq(species: str, bp: int, direction: str, transcript_id: str):
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
     except IndexError:
         raise HTTPException ( status_code=404 , detail="bad start/stop" )
-    finally:
-        db.close()
