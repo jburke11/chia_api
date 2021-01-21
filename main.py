@@ -1,12 +1,8 @@
 from fastapi import FastAPI , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pymongo , re , datetime, gridfs
-from utility import get_ssr
-from typing import Optional
-# get the client
-client = pymongo.MongoClient ( )
-# connect to the genes collection in the chia database
-db = client.chia
+from utility import get_ssr, open_db
+from typing import Optional, List
 
 app = FastAPI ( debug=True , title="Chia DB" )  # debug will need to be changed to false
 
@@ -25,9 +21,10 @@ def root() :
     return { "Status" : "Operational" }
 
 
-@app.get ( "/id/{transcript_id}" )
-def get_id(transcript_id: str) :
+@app.get ( "/id/{species}/{transcript_id}" )
+def get_id(species: str, transcript_id: str) :
     try :
+        db = open_db(species)
         item_id = transcript_id.rstrip ( )
         if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , item_id ) : # if item_id is a transcript id
             model = db.genes.find_one ( { "transcript_id" : item_id } , { "_id" : 0 } )
@@ -60,11 +57,14 @@ def get_id(transcript_id: str) :
         [model ["alt_splices"].append ( splice ["transcript_id"] ) for splice in alt_splices]
         get_ssr(db, model)
         return model
+    finally:
+        db.close()
 
-@app.get("/interpro/{type}/{keyword}")
-def get_interpro(keyword: str, type: str, limit: Optional[int] = 60000 ):
+@app.get("/interpro/{species}/{type}/{keyword}")
+def get_interpro(species: str, keyword: str, type: str, limit: Optional[int] = 60000 ):
     keyword = keyword.rstrip()
     try:
+        db = open_db(species)
         if type == "keyword":
             models = db.genes.aggregate ( [
                 { "$match" : { "$expr" : { "regexMatch" : { "input" : "$model_iprscan.method_description" , "regex" : keyword } } } } ,
@@ -89,11 +89,14 @@ def get_interpro(keyword: str, type: str, limit: Optional[int] = 60000 ):
             raise TypeError
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
+    finally:
+        db.close()
 
-@app.get("/go/{type}/{keyword}")
-def get_go(keyword: str, type: str, limit: Optional[int] = 60000):
+@app.get("/go/{species}/{type}/{keyword}")
+def get_go(species: str, keyword: str, type: str, limit: Optional[int] = 60000):
     keyword = keyword.rstrip()
     try:
+        db = open_db(species)
         if type == "keyword":
             models = db.genes.aggregate ( [
                 { "$match" : { "$expr" : { "regexMatch" : { "input" : "$model_go.go_name" , "regex" : keyword } } } } ,
@@ -120,19 +123,25 @@ def get_go(keyword: str, type: str, limit: Optional[int] = 60000):
             raise TypeError
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
+    finally:
+        db.close()
 
-@app.get("/func_anno/{keyword}")
-def get_func_anno(keyword: str):
+@app.get("/func_anno/{species}/{keyword}")
+def get_func_anno(species: str,keyword: str):
+    db = open_db(species)
     keyword = keyword.rstrip()
     models = list(db.genes.find({"func_anno": {"$regex": keyword}}, {"_id": 0, "transcript_id": 1, "func_anno": 1}))
     if len(models) == 0:
+        db.close ( )
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
     else:
+        db.close ( )
         return {"func_anno": models}
 
-@app.get("/seq/{type}/{transcript_id}")
-def get_seq(transcript_id: str, type: str):
+@app.get("/seq/{species}/{type}/{transcript_id}")
+def get_seq(species: str, transcript_id: str, type: str):
     try:
+        db = open_db(species)
         if type == "CDS" or type == "cDNA" or type == "Protein":
             db_type = type.lower ()
             if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , transcript_id ):
@@ -152,10 +161,13 @@ def get_seq(transcript_id: str, type: str):
 
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
+    finally:
+        db.close()
 
-@app.get("/seq_chr/{chr}")
-def get_seq_chr(chr: str, start: Optional[int] = None, stop: Optional[int] = None):
+@app.get("/seq_chr/{species}/{chr}")
+def get_seq_chr(species: str, chr: str, start: Optional[int] = None, stop: Optional[int] = None):
     try:
+        db = open_db(species)
         fs = gridfs.GridFS(db)
         file = db.fs.files.find_one({"filename": chr})
         with fs.get(file["_id"]) as fp_read:
@@ -177,10 +189,13 @@ def get_seq_chr(chr: str, start: Optional[int] = None, stop: Optional[int] = Non
                 return {"header":header, "sequence": result[start - 1: stop]}
     except TypeError:
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
+    finally:
+        db.close()
 
-@app.get("/flanking_seq/{direction}/{transcript_id}/{bp}")
-def flanking_seq(bp: int, direction: str, transcript_id: str):
+@app.get("/flanking_seq/{species}/{direction}/{transcript_id}/{bp}")
+def flanking_seq(species: str, bp: int, direction: str, transcript_id: str):
     try:
+        db = open_db(species)
         if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , transcript_id ) :
             model = db.genes.find_one ( { "transcript_id" : transcript_id } ,
                                         { "_id" : 0 , "transcript_id" : 1 , "start": 1, "stop": 1, "scaffold": 1} )
@@ -215,3 +230,5 @@ def flanking_seq(bp: int, direction: str, transcript_id: str):
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
     except IndexError:
         raise HTTPException ( status_code=404 , detail="bad start/stop" )
+    finally:
+        db.close()
