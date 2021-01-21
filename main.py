@@ -1,7 +1,7 @@
 from fastapi import FastAPI , HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pymongo , re , datetime, gridfs
-from utility import get_ssr, open_db
+from utility import get_ssr, open_db, get_regex
 from typing import Optional, List
 
 app = FastAPI ( debug=True , title="Chia DB" )  # debug will need to be changed to false
@@ -26,7 +26,8 @@ def get_id(species: str, transcript_id: str) :
     try :
         db = open_db(species)
         item_id = transcript_id.rstrip ( )
-        if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , item_id ) : # if item_id is a transcript id
+        regex_dict = get_regex(species)
+        if re.match ( regex_dict["transcript_regex"] , item_id ) : # if item_id is a transcript id
             model = db.genes.find_one ( { "transcript_id" : item_id } , { "_id" : 0 } )
             alt_splices = db.genes.find ( { "gene_id" : model ["gene_id"] ,
                                             "transcript_id" : { "$not" : { "$regex" : item_id } } } ,
@@ -34,7 +35,7 @@ def get_id(species: str, transcript_id: str) :
             model ["alt_splices"] = []
             [model ["alt_splices"].append ( splice ["transcript_id"] ) for splice in alt_splices]
 
-        elif re.match ( r"^Salhi[.]\d{2}G\d{6}$" , item_id ) : # if item_id is a gene name and is in hc, finds the rep model
+        elif re.match ( regex_dict["gene_regex"] , item_id ) : # if item_id is a gene name and is in hc, finds the rep model
             model = db.genes.find_one ( { "gene_id" : item_id , "is_repr" : 1 } , { "_id" : 0 })
             alt_splices = db.genes.find ( { "gene_id" : model ["gene_id"] , "is_repr" : 0 ,
                                             "transcript_id" : { "$not" : { "$regex" : model["transcript_id"] } } } ,
@@ -141,14 +142,15 @@ def get_func_anno(species: str,keyword: str):
 @app.get("/seq/{species}/{type}/{transcript_id}")
 def get_seq(species: str, transcript_id: str, type: str):
     try:
+        regex_dict = get_regex(species)
         db = open_db(species)
         if type == "CDS" or type == "cDNA" or type == "Protein":
             db_type = type.lower ()
-            if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , transcript_id ):
+            if re.match ( regex_dict["transcript_regex"] , transcript_id ):
                 model = db.genes.find_one({"transcript_id": transcript_id}, {"_id": 0, "transcript_id": 1, db_type : 1})
                 model = {"transcript_id": model["transcript_id"], "sequence": model[db_type], "type": type}
                 return model
-            elif re.match ( r"^Salhi[.]\d{2}G\d{6}$" , transcript_id ):
+            elif re.match ( regex_dict["gene_regex"] , transcript_id ):
                 rep_model = db.genes.find_one({"gene_id": transcript_id, "is_repr": 1}, {"_id": 0, "transcript_id": 1, db_type: 1})
                 if not rep_model:
                     rep_model = db.genes.find_one({"gene_id": transcript_id}, {"_id": 0, "transcript_id": 1, db_type: 1})
@@ -196,10 +198,11 @@ def get_seq_chr(species: str, chr: str, start: Optional[int] = None, stop: Optio
 def flanking_seq(species: str, bp: int, direction: str, transcript_id: str):
     try:
         db = open_db(species)
-        if re.match ( r"^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$" , transcript_id ) :
+        regex_dict = get_regex(species)
+        if re.match ( regex_dict["transcript_regex"] , transcript_id ) :
             model = db.genes.find_one ( { "transcript_id" : transcript_id } ,
                                         { "_id" : 0 , "transcript_id" : 1 , "start": 1, "stop": 1, "scaffold": 1} )
-        elif re.match ( r"^Salhi[.]\d{2}G\d{6}$" , transcript_id ) :
+        elif re.match ( regex_dict["gene_regex"] , transcript_id ) :
             model = db.genes.find_one ( { "gene_id" : transcript_id , "is_repr" : 1 } ,
                                             { "_id" : 0 , "transcript_id" : 1, "start":1, "stop":1 , "scaffold": 1} )
             if not model :

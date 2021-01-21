@@ -34,3 +34,24 @@ def open_db(species):
         return db
     else:
         raise FileNotFoundError
+
+def get_regex(species):
+    regex_dict = dict()
+    if species == "salvia_hispanica":
+        regex_dict["transcript_regex"] = "^Salhi[.]\d{2}G\d{6}[.]\d{1,2}$"
+        regex_dict["gene_regex"] = "^Salhi[.]\d{2}G\d{6}$"
+        return regex_dict
+    elif species == "tectona_grandis":
+        regex_dict["transcript_regex"] = "^Tg\d{2}g\d{5}[.]t\d{1,2}$"
+        regex_dict["gene_regex"] = "^Tg\d{2}g\d{5}$"
+        return regex_dict
+    elif species == "callicarpa_americana":
+        regex_dict["transcript_regex"] = "^Calam[.]\d{2}G\d{6}[.]\d{1,2}$"
+        regex_dict["gene_regex"] = "^Calam[.]\d{2}G\d{6}$"
+        return regex_dict
+    elif species == "nepeta_cataria" or species == "nepeta_mussinii" or species == "hyssopus_officinalis":
+        regex_dict["transcript_regex"] = "^g\d{1,5}.t\d{1,2}"
+        regex_dict["gene_regex"] = "^g\d{1,5}"
+        return regex_dict
+    else:
+        raise FileNotFoundError
