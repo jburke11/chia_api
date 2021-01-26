@@ -127,7 +127,6 @@ def get_func_anno(species: str,keyword: str):
     keyword = keyword.rstrip()
     models = list(db.genes.find({"func_anno": {"$regex": keyword}}, {"_id": 0, "transcript_id": 1, "func_anno": 1}))
     if len(models) == 0:
-        db.close ( )
         raise HTTPException ( status_code=404 , detail="bad keyword/id" )
     else:
         return {"func_anno": models}
