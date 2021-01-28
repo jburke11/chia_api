@@ -46,6 +46,7 @@ def get_id(species: str, transcript_id: str) :
         else :
             raise HTTPException ( status_code=404 , detail="bad id" )
         get_ssr(db, model)
+        model["species"] = species.replace("_", " ").capitalize()
         return model
     except TypeError : # if item_id is a gene name and is not hc, picks the first model
         model = db.genes.find_one ( { "gene_id" : item_id } , { "_id" : 0 })
